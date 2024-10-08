@@ -1,4 +1,25 @@
 export const ONE = 1000000000;
+// src/utils/utils.ts
+
+// ... 其他现有的导出 ...
+
+// ANSI 转义码
+const RESET = "\x1b[0m";
+const LIGHT_BLUE = "\x1b[94m";
+const GREEN = "\x1b[32m";
+const RED = "\x1b[31m";
+
+export function lightBlue(text: string): string {
+  return `${LIGHT_BLUE}${text}${RESET}`;
+}
+
+export function green(text: string): string {
+  return `${GREEN}${text}${RESET}`;
+}
+
+export function red(text: string): string {
+  return `${RED}${text}${RESET}`;
+}
 
 export function div(numerator: bigint, denominator: bigint, decimalPlaces: number = 6): string {
     // 检查除数是否为零
