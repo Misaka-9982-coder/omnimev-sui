@@ -26,10 +26,10 @@ export async function getEachTokenRatio() {
   for (const token of tokens) {
     try {
       if (token.coin_type !== SUI_TOKEN) {
-        const result = await performRoundTripQuote(BigInt(ONE), SUI_TOKEN, token.coin_type);
-        console.log("");
         console.log(lightBlue(token.name));
+        const result = await performRoundTripQuote(BigInt(ONE), SUI_TOKEN, token.coin_type);
         console.log("Round trip completed, trip ratio:", result.roundTripRatio);
+        console.log()
       }
     } catch (error) {
       console.error(red("An error occurred during round trip quote:"), error);
