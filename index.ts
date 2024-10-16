@@ -28,104 +28,74 @@ const SUI_TOKEN = "0x2::sui::SUI";
 const USDC_TOKEN = "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN";
 
 async function executeTradeIfProfitable(
-  amountIn: bigint = BigInt(ONE) * BigInt(10),
-  tokenA: string = SUI_TOKEN,
-  tokenB: string = USDC_TOKEN
-) {
-  try {
-    const result = await performRoundTripQuote(amountIn, tokenA, tokenB);
+    amountIn: bigint = BigInt(ONE) * BigInt(10),
+    tokenA: string = SUI_TOKEN,
+    tokenB: string = USDC_TOKEN
+  ) {
+    try {
+      const quoteResult = await performRoundTripQuote(amountIn, tokenA, tokenB);
+  
+      // 估算 gas 费用（这里假设每次交易的 gas 费用为 2e8 SUI）
+      const estimatedGasFee = BigInt(4e5); // 两次交易的总 gas 费用
+  
+      if (quoteResult.profitOrLoss > estimatedGasFee) {
+        console.log(green("Profitable trade detected. Executing trade..."));
+  
+        const txA2B = await HOP_SDK.fetchTx({
+          trade: quoteResult.quoteA2B.trade,
+          sui_address: keypair.getPublicKey().toSuiAddress(),
+          gas_budget: 2e8,
+          max_slippage_bps: 100,
+          return_output_coin_argument: false,
+        });
+  
+        const txBytesA2B = await txA2B.transaction.build({ client: sui_client });
+        const signDataA2B = await Transaction.from(txBytesA2B).sign({ signer: keypair });
+        const serializedSignatureA2B: SerializedSignature = signDataA2B.signature;
+  
+        const txB2A = await HOP_SDK.fetchTx({
+          trade: quoteResult.quoteB2A.trade,
+          sui_address: keypair.getPublicKey().toSuiAddress(),
+          gas_budget: 2e8,
+          max_slippage_bps: 100,
+          return_output_coin_argument: false,
+        });
+  
+        const txBytesB2A = await txB2A.transaction.build({ client: sui_client });
+        const signDataB2A = await Transaction.from(txBytesB2A).sign({ signer: keypair });
+        const serializedSignatureB2A: SerializedSignature = signDataB2A.signature;
+  
+        const txBytesA2BBase64 = Buffer.from(txBytesA2B).toString('base64');
+        const txBytesB2ABase64 = Buffer.from(txBytesB2A).toString('base64');
 
-    // 估算 gas 费用（这里假设每次交易的 gas 费用为 2e8 SUI）
-    const estimatedGasFee = BigInt(4e5); // 两次交易的总 gas 费用
+        // 准备执行交易包
+        const response = await fetch('https://rpc.suiflow.io', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'sui_executeTransactionBlockBundle',
+            params: [
+              [txBytesA2BBase64, txBytesB2ABase64],
+              [[serializedSignatureA2B], [serializedSignatureB2A]]
+            ]
+          })
+        });
 
-    if (result.profitOrLoss > estimatedGasFee) {
-      console.log(green("Profitable trade detected. Executing trade..."));
-
-      const txA2B = await HOP_SDK.fetchTx({
-        trade: result.quoteA2B.trade,
-        sui_address: keypair.getPublicKey().toSuiAddress(),
-        gas_budget: 2e8,
-        max_slippage_bps: 100,
-        return_output_coin_argument: false,
-      });
-
-      const txBytesA2B = await txA2B.transaction.build({ client: sui_client });
-      const signDataA2B = await Transaction.from(txBytesA2B).sign({ signer: keypair });
-      const serializedSignatureA2B: SerializedSignature = signDataA2B.signature;
-
-      const resA2B = await sui_client.executeTransactionBlock({
-        transactionBlock: txBytesA2B,
-        signature: [serializedSignatureA2B],
-      });
-
-      console.log("Transaction A to B executed:", resA2B);
-
-      // 等待交易确认
-      const confirmedTxA2B = await sui_client.waitForTransaction({
-        digest: resA2B.digest,
-        timeout: 30000, // 30 秒超时
-      });
-      
-      console.log("Transaction A to B confirmed:", confirmedTxA2B);
-
-      // 等待并检查 TokenB 余额
-      const expectedTokenBAmount = BigInt(result.quoteA2B.amount_out_with_fee);
-      await waitForTokenBalance(tokenB, expectedTokenBAmount);
-
-      console.log(`Sufficient ${tokenB} balance detected. Proceeding with B to A trade.`);
-
-      const txB2A = await HOP_SDK.fetchTx({
-        trade: result.quoteB2A.trade,
-        sui_address: keypair.getPublicKey().toSuiAddress(),
-        gas_budget: 2e8,
-        max_slippage_bps: 100,
-        return_output_coin_argument: false,
-      });
-
-      const txBytesB2A = await txB2A.transaction.build({ client: sui_client });
-      const signDataB2A = await Transaction.from(txBytesB2A).sign({ signer: keypair });
-      const serializedSignatureB2A: SerializedSignature = signDataB2A.signature;
-
-      const resB2A = await sui_client.executeTransactionBlock({
-        transactionBlock: txBytesB2A,
-        signature: [serializedSignatureB2A],
-      });
-
-      console.log("Transaction B to A executed:", resB2A);
-
-      // 等待交易确认
-      const confirmedTxB2A = await sui_client.waitForTransaction({
-        digest: resB2A.digest,
-        timeout: 30000, // 30 秒超时
-      });
-
-      console.log("Transaction B to A confirmed:", confirmedTxB2A);
-    } else {
-      console.log(red("Trade is not profitable. Skipping execution."));
+        console.log("Transaction bundle executed:", response);
+        const bundleResult = await response.json();
+        console.log("Transaction bundle executed:", bundleResult);
+        
+      } else {
+        console.log(red("Trade is not profitable. Skipping execution."));
+      }
+    } catch (error) {
+      console.error("An error occurred during trade execution:", error);
     }
-  } catch (error) {
-    console.error("An error occurred during trade execution:", error);
   }
-}
-
-async function waitForTokenBalance(tokenType: string, expectedAmount: bigint, maxAttempts: number = 30, intervalMs: number = 1000) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const balance = await sui_client.getBalance({
-      owner: keypair.getPublicKey().toSuiAddress(),
-      coinType: tokenType,
-    });
-
-    if (BigInt(balance.totalBalance) >= expectedAmount) {
-      console.log(`Sufficient balance of ${tokenType} detected: ${balance.totalBalance}`);
-      return;
-    }
-
-    console.log(`Waiting for ${tokenType} balance. Current: ${balance.totalBalance}, Expected: ${expectedAmount}`);
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
-  }
-
-  throw new Error(`Timeout waiting for sufficient ${tokenType} balance`);
-}
 
 async function performRoundTripQuote(
   amountIn: bigint,
