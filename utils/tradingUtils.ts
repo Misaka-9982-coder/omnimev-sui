@@ -12,17 +12,17 @@ const RPC_URL = getFullnodeUrl("mainnet");
 const HOP_API_OPTIONS: HopApiOptions = {
   api_key: process.env.HOP_API_KEY || "",
   fee_bps: 0,
-  fee_wallet: "0x2",
+  fee_wallet: process.env.FEE_WALLET || "",
 };
 
-const sdk = new HopApi(RPC_URL, HOP_API_OPTIONS);
+const HOP_SDK = new HopApi(RPC_URL, HOP_API_OPTIONS);
 
 // Token constants
 const SUI_TOKEN = "0x2::sui::SUI";
 const USDC_TOKEN = "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN";
 
 export async function getEachTokenRatio() {
-  const tokens = (await sdk.fetchTokens()).tokens;
+  const tokens = (await HOP_SDK.fetchTokens()).tokens;
   for (const token of tokens) {
     try {
       if (token.coin_type !== SUI_TOKEN) {
@@ -44,7 +44,7 @@ export async function performRoundTripQuote(
   tokenB: string = USDC_TOKEN
 ) {
   try {
-    const quoteA2B = await sdk.fetchQuote({
+    const quoteA2B = await HOP_SDK.fetchQuote({
       token_in: tokenA,
       token_out: tokenB,
       amount_in: amountIn,
@@ -52,7 +52,7 @@ export async function performRoundTripQuote(
 
     console.log(`${tokenA} to ${tokenB} amount out:`, quoteA2B.amount_out_with_fee);
 
-    const quoteB2A = await sdk.fetchQuote({
+    const quoteB2A = await HOP_SDK.fetchQuote({
       token_in: tokenB,
       token_out: tokenA,
       amount_in: BigInt(quoteA2B.amount_out_with_fee),
@@ -66,6 +66,8 @@ export async function performRoundTripQuote(
     if (profitOrLoss > 0n) {
       console.log(green("Profit:"), profitOrLoss.toString());
       console.log("Round trip ratio:", green(`${roundTripRatio}`));
+      
+
     } else if (profitOrLoss < 0n) {
       console.log(red("Loss:"), profitOrLoss.toString());
       console.log("Round trip ratio:", red(`${roundTripRatio}`));
